@@ -237,9 +237,57 @@ def chunk_text(text: str, target: int = CHUNK_TARGET_CHARS):
 
 
 def cmd_chunk(args):
-    """Print chunk boundaries for a file (for the LLM to use)."""
+    """Print chunk boundaries for a file (for the LLM to use).
+    
+    Strategies:
+      prose (default): split at section headers, fallback to paragraphs
+      log: head (50 lines) + middle sample + tail (100 lines)
+      data: schema (header + 5 rows) + sample (20 rows)
+      code: split at function/class boundaries
+    """
     text = Path(args.file).expanduser().resolve().read_text()
     target = args.target or CHUNK_TARGET_CHARS
+    strategy = args.strategy or "prose"
+
+    if strategy == "log":
+        lines = text.strip().split("\n")
+        head = lines[:50]
+        mid_start = max(50, len(lines) // 2 - 50)
+        middle = lines[mid_start:mid_start + 100]
+        tail = lines[-100:] if len(lines) > 100 else lines
+        print(f"=== LOG HEAD ({len(head)} lines, ~{sum(len(l) for l in head)//CHARS_PER_TOKEN} tokens) ===")
+        print("\n".join(head))
+        print(f"\n=== LOG MIDDLE (lines {mid_start}-{mid_start+100}, ~{sum(len(l) for l in middle)//CHARS_PER_TOKEN} tokens) ===")
+        print("\n".join(middle))
+        print(f"\n=== LOG TAIL ({len(tail)} lines, ~{sum(len(l) for l in tail)//CHARS_PER_TOKEN} tokens) ===")
+        print("\n".join(tail))
+        return
+
+    if strategy == "data":
+        lines = text.strip().split("\n")
+        header = lines[0] if lines else ""
+        sample_size = min(20, max(1, len(lines) - 1))
+        step = max(1, (len(lines) - 1) // sample_size)
+        samples = [lines[i] for i in range(1, len(lines), step)][:sample_size]
+        print(f"=== DATA SCHEMA ===")
+        print(header)
+        print(f"\n=== DATA SAMPLE ({len(samples)} rows of {len(lines)-1} total) ===")
+        print("\n".join(samples))
+        return
+
+    if strategy == "code":
+        # Split at top-level def/class, keep imports as first chunk
+        blocks = re.split(r'\n(?=(?:def |class |async def ))', text)
+        for i, block in enumerate(blocks):
+            print(f"=== CODE BLOCK {i} ({len(block)} chars, ~{len(block)//CHARS_PER_TOKEN} tokens) ===")
+            if args.dry_run:
+                print(f"  First 100 chars: {block[:100]}...")
+            else:
+                print(block)
+            print()
+        return
+
+    # Default: prose chunking
     for i, chunk in enumerate(chunk_text(text, target)):
         print(f"=== CHUNK {i} ({len(chunk)} chars, ~{len(chunk)//CHARS_PER_TOKEN} tokens) ===")
         if args.dry_run:
@@ -535,6 +583,7 @@ def main():
     s_chunk = sub.add_parser("chunk")
     s_chunk.add_argument("file")
     s_chunk.add_argument("--target", type=int, help="Target chars per chunk (default 12K)")
+    s_chunk.add_argument("--strategy", choices=["prose", "log", "data", "code"], default="prose")
     s_chunk.add_argument("--dry-run", action="store_true")
 
     s_state = sub.add_parser("state")
