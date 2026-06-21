@@ -3,6 +3,8 @@
 [![CI](https://github.com/knefenk/autowiki/actions/workflows/ci.yml/badge.svg)](https://github.com/knefenk/autowiki/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+<img src="docs/banner.png" alt="autowiki — documents in, claims validated, contradictions flagged, knowledge base out" width="100%">
+
 Turn documents into a validated, cross-referenced knowledge base. Ingests
 markdown, PDFs, code, CSVs, logs. Checks that extracted claims match their
 sources and don't contradict each other.
