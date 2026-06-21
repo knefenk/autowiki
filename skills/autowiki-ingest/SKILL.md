@@ -57,21 +57,22 @@ Subdir: PDFs → `papers/`, code → `code/<repo>/`, logs/CSV → `logs/`, rest 
 
 ## Step 2: Chunk with strategy
 
+Load `autowiki-chunk` skill for chunking strategy and instructions.
 Pick strategy by file extension:
 
-| Extension | Strategy | How to chunk |
-|---|---|---|
-| `.md`, `.txt` | `prose` | Split at `##` or `#` headers. Fallback: paragraph boundaries (double newline). Target 1K-3K tokens per chunk. |
-| `.log`, `.jsonl` | `log` | Three sections: **head** (first 50 lines for format), **middle** (100 lines from center for patterns), **tail** (last 100 lines for recency). |
-| `.csv`, `.tsv` | `data` | **Schema** (header row) + **sample** (20 evenly-spaced rows). |
-| `.py`, `.js`, `.go` | `code` | Split at `def `, `class `, `async def `. Keep imports with first chunk. |
+| Extension | Strategy |
+|---|---|
+| `.md`, `.txt` | `prose` |
+| `.log`, `.jsonl` | `log` |
+| `.csv`, `.tsv` | `data` |
+| `.py`, `.js`, `.go` | `code` |
 
 Load ONE chunk at a time. Process it fully before loading the next.
+To read specific lines: `read_file <file> offset=<N> limit=<M>`.
 
-To read specific lines without loading the full file:
-```
-read_file <file> offset=<N> limit=<M>
-```
+Implementation-only code blocks that yield no extractable concepts are
+normal — don't count them as stale. Only increment `stale_count` when a
+chunk yields ZERO items.
 
 ## Step 3: EN — Extract (per chunk)
 
@@ -91,6 +92,17 @@ Write extracted items to `$WIKI/.tmp/extracted.json` (append mode, one JSON obje
 - stale=1: retry same chunk, same strategy
 - stale=2-3: halve the chunk size and retry. Don't dig deeper.
 - stale≥4: flag this document for human review, skip to next doc
+
+**Important:** implementation-only code blocks that yield no extractable
+concepts are normal for the `code` strategy. Only increment `stale_count`
+when a block yields ZERO items. Processing details without extracting
+new knowledge is expected, not a stall.
+
+**If a block references entities from earlier blocks** (e.g., function
+using FEATURE_NAMES from imports block), search the current document's
+already-extracted items before creating duplicate pages. Two functions
+doing the same thing = one concept page. Update the existing page rather
+than creating a new one.
 
 **If extraction succeeds:** proceed to PI phase. Don't touch `stale_count`.
 Update `state.json`: increment chunk counter, set `last_seen` timestamp.
