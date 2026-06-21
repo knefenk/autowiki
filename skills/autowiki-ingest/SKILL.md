@@ -36,6 +36,18 @@ resume from where it left off.
 
 ## Step 1: Capture raw source
 
+**First, check if already ingested.** Compute sha256 of the document
+content. Search existing raw/ files for this sha256:
+
+```bash
+grep -rl "sha256: <digest>" "$WIKI"/raw/ 2>/dev/null
+```
+
+If found and the user didn't explicitly request re-ingestion, skip this
+document. Report: "Already ingested as <path>. Skipping."
+
+If no match, proceed:
+
 1. Read the document. Use `read_file` for text/code/logs. For PDFs,
    extract text first: `python3 -c "import fitz; ..."` or paste content.
 
