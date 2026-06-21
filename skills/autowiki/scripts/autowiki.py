@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""autowiki  -  mechanical operations for the knowledge base.
+"""autowiki — mechanical operations for the knowledge base.
 
 This script handles deterministic operations: init, chunking, sha256,
 drift detection, linting, index rebuild. The LLM handles semantic work:
@@ -26,6 +26,98 @@ WIKI_DIRS = [
     "raw/articles", "raw/papers", "raw/code", "raw/logs", "raw/assets",
     "entities", "concepts", "comparisons", "claims", "queries",
 ]
+
+NAVIGATE_CONTENT="""# Agent Navigation
+
+You are an AI agent. This directory is an autowiki knowledge base.
+Read this once to understand how to find and use information here.
+
+## Quick start
+
+1. Read `index.md` - catalog of every page, one line each, grouped by type.
+2. Read `SCHEMA.md` if this is your first time - domain, conventions, tag list.
+3. `read_file log.md` (last 30 lines) for recent activity.
+
+## Finding things
+
+**By topic:**
+```
+search_files "<term>" path=. file_glob="*.md" output_mode="files_only"
+```
+
+**Structured search:**
+```
+python3 scripts/autowiki.py search "<query>" --path . --limit 5
+```
+
+**By tag or confidence:**
+```
+search_files "tags:.*framework" path=. file_glob="*.md"
+search_files "confidence: low" path=. file_glob="*.md"
+```
+
+**Pages linking to X:**
+```
+search_files "\\\\[\\\\[page-slug\\\\]\\\\]" path=. file_glob="*.md" output_mode="files_only"
+```
+
+**List all pages by type:**
+```
+python3 scripts/autowiki.py list --path . --section entities
+python3 scripts/autowiki.py list --path . --section concepts
+python3 scripts/autowiki.py list --path . --section claims
+```
+
+## Reading a page
+
+Read with `read_file`. The top of each file has YAML frontmatter with:
+
+- `type` - entity | concept | claim | comparison | query
+- `confidence` - high | medium | low (low = don't trust without checking source)
+- `contested: true` - this page conflicts with another; read both before concluding
+- `contradictions: [slug]` - which page it contradicts
+- `sources: [raw/...]` - where the information came from
+- `tags: [...]` - topics
+
+Follow `[[wikilinks]]` to explore connections. The graph IS the KB.
+
+## Understanding the structure
+
+```
+wiki/
+├── _navigate.md    <- you are here
+├── SCHEMA.md       <- domain, rules, tag taxonomy
+├── index.md        <- full catalog (read this first)
+├── log.md          <- chronological activity record
+├── raw/            <- immutable source documents (never modify)
+│   ├── articles/   <- markdown, web pages
+│   ├── papers/     <- PDFs, arxiv
+│   ├── code/       <- source code snapshots
+│   └── logs/       <- log files, CSV, JSON data
+├── entities/       <- named things: people, orgs, systems, tools
+├── concepts/       <- ideas, techniques, patterns, findings
+├── claims/         <- specific assertions with confidence scores
+├── comparisons/    <- side-by-side analyses
+└── queries/        <- saved answers worth keeping
+```
+
+## Verifying the KB
+
+```
+python3 scripts/autowiki.py lint --path .
+python3 scripts/autowiki.py validate --path .
+```
+
+## Rules
+
+- Never load the full KB into context. Search, then read specific pages.
+- Never modify files in `raw/` - they're immutable.
+- `confidence: low` claims need source verification before being relied on.
+- `contested: true` pages have unresolved contradictions - flag for human review.
+- Prefer updating an existing page over creating a new one.
+- Every new page must be added to `index.md`.
+- Every action must be appended to `log.md`.
+"""
 
 
 # ── wiki init ──────────────────────────────────────────────
@@ -58,6 +150,7 @@ tags: [meta]
 """)
     (wiki / "index.md").write_text(f"# Wiki Index\n\n> Last updated: {today} | Total pages: 0\n\n## Entities\n\n## Concepts\n\n## Comparisons\n\n## Claims\n\n## Queries\n")
     (wiki / "log.md").write_text(f"# Wiki Log\n\n## [{today}] create | Wiki initialized\n- Domain: {domain}\n")
+    (wiki / "_navigate.md").write_text(NAVIGATE_CONTENT)
     print(f"Wiki initialized at {wiki}")
 
 
@@ -146,13 +239,39 @@ def chunk_text(text: str, target: int = CHUNK_TARGET_CHARS):
 def cmd_chunk(args):
     """Print chunk boundaries for a file (for the LLM to use)."""
     text = Path(args.file).expanduser().resolve().read_text()
-    for i, chunk in enumerate(chunk_text(text)):
+    target = args.target or CHUNK_TARGET_CHARS
+    for i, chunk in enumerate(chunk_text(text, target)):
         print(f"=== CHUNK {i} ({len(chunk)} chars, ~{len(chunk)//CHARS_PER_TOKEN} tokens) ===")
         if args.dry_run:
             print(f"  First 100 chars: {chunk[:100]}...")
         else:
             print(chunk)
         print()
+
+
+def cmd_state(args):
+    """Read or write progress state for multi-chunk ingestion."""
+    wiki = Path(args.path).expanduser().resolve()
+    wiki.mkdir(parents=True, exist_ok=True)
+    state_file = wiki / "state.json"
+    if args.init:
+        state = {"current_doc": args.init, "chunk": 0, "total_chunks": args.total or 1,
+                 "extracted": [], "pages_touched": []}
+        state_file.write_text(json.dumps(state, indent=2))
+        print(f"State initialized: {args.init} (0/{state['total_chunks']})")
+    elif state_file.exists():
+        state = json.loads(state_file.read_text())
+        if args.set_chunk is not None:
+            state["chunk"] = args.set_chunk
+        if args.add_extracted:
+            state["extracted"].append(args.add_extracted)
+        if args.add_touched:
+            if args.add_touched not in state["pages_touched"]:
+                state["pages_touched"].append(args.add_touched)
+        state_file.write_text(json.dumps(state, indent=2))
+        print(json.dumps(state))
+    else:
+        print(json.dumps({"error": "no state file. use --init to create"}))
 
 
 # ── lint ───────────────────────────────────────────────────
@@ -276,7 +395,7 @@ def cmd_index(args):
     for s, pages in sections.items():
         lines.append(f"## {s.title()}")
         for slug, title, summary in pages:
-            s_text = f"  -  {summary}" if summary else ""
+            s_text = f" — {summary}" if summary else ""
             lines.append(f"- [[{slug}]]{s_text}")
         lines.append("")
 
@@ -319,7 +438,7 @@ def cmd_search(args):
 
     results.sort(key=lambda r: r[0], reverse=True)
     for i, (score, slug, title, section, snippet) in enumerate(results[:args.limit or 10]):
-        print(f"\n{i+1}. [[{slug}]] ({section})  -  score: {score}")
+        print(f"\n{i+1}. [[{slug}]] ({section}) — score: {score}")
         print(f"   {title}")
         if snippet:
             print(f"   \"{snippet}\"")
@@ -369,7 +488,16 @@ def main():
 
     s_chunk = sub.add_parser("chunk")
     s_chunk.add_argument("file")
+    s_chunk.add_argument("--target", type=int, help="Target chars per chunk (default 12K)")
     s_chunk.add_argument("--dry-run", action="store_true")
+
+    s_state = sub.add_parser("state")
+    s_state.add_argument("--path", default="~/wiki")
+    s_state.add_argument("--init")
+    s_state.add_argument("--set-chunk", type=int)
+    s_state.add_argument("--total", type=int)
+    s_state.add_argument("--add-extracted")
+    s_state.add_argument("--add-touched")
 
     s_lint = sub.add_parser("lint")
     s_lint.add_argument("--path", default="~/wiki")
@@ -396,7 +524,7 @@ def main():
         p.print_help(); return
 
     {"init": cmd_init, "save-raw": cmd_save_raw, "validate": cmd_validate,
-     "chunk": cmd_chunk, "lint": cmd_lint, "index": cmd_index,
+     "chunk": cmd_chunk, "state": cmd_state, "lint": cmd_lint, "index": cmd_index,
      "search": cmd_search, "show": cmd_show, "list": cmd_list}[args.cmd](args)
 
 

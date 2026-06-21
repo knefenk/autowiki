@@ -12,13 +12,16 @@ metadata:
     related_skills: [llm-wiki]
 ---
 
-# AutoWiki  -  Self-Validating Knowledge Compiler
+# AutoWiki — Self-Validating Knowledge Compiler
 
 Ingest documents → extract understanding → validate claims → build a reusable KB.
 
-Based on the LLM Wiki pattern (Karpathy) and the EN→PI→R→E loop (ENPIRE/NVIDIA).
-Works as an Obsidian vault out of the box  -  open `~/wiki` in Obsidian for
+Built on the LLM Wiki pattern (Karpathy) and the EN→PI→R→E loop (ENPIRE/NVIDIA).
+Works as an Obsidian vault out of the box — open `~/wiki` in Obsidian for
 graph view, wikilinks, and Dataview queries on frontmatter.
+
+See `references/ecosystem-survey.md` for the competitive landscape (kepano/obsidian-skills,
+ARIS, karpathy-llm-wiki) and where autowiki fits.
 
 **What makes this different:** claims are checked against their sources
 (did we hallucinate?) and against each other (do claims contradict?).
@@ -35,7 +38,7 @@ Default: `~/wiki`. Override with `WIKI_PATH` env var.
 EN (Ingestion)  → PI (Understanding) → R (Validation) → E (Index)
 ```
 
-### EN  -  Ingestion
+### EN — Ingestion
 
 1. **Save raw source.** Determine type → save to `raw/<subdir>/` with frontmatter
    (source_url, ingested, sha256 of stripped body, type). See `references/raw-template.md`.
@@ -45,30 +48,30 @@ EN (Ingestion)  → PI (Understanding) → R (Validation) → E (Index)
 
 3. **Cross-chunk dedup.** Merge duplicates, flag internal contradictions.
 
-### PI  -  Understanding
+### PI — Understanding
 
 1. Search existing KB (`search_files` + `index.md`) for related pages.
 2. Create or update pages. Follow `references/page-template.md` for format.
 3. Every page: frontmatter with type + tags + sources + confidence, min 2 wikilinks.
 4. Tags only from SCHEMA.md taxonomy.
 
-### R  -  Validation (novel  -  not in other wiki skills)
+### R — Validation (novel — not in other wiki skills)
 
-**R1  -  Source fidelity:** For each claim, re-check against raw source.
+**R1 — Source fidelity:** For each claim, re-check against raw source.
 Flag: invented numbers, dropped qualifiers, shifted context.
 
-**R2  -  Internal consistency:** Search KB for contradicting claims.
+**R2 — Internal consistency:** Search KB for contradicting claims.
 If found: mark `contested: true` on both pages, set `confidence: low`,
 add contradiction section. Do NOT auto-resolve.
 
-**R3  -  Confidence scoring:**
+**R3 — Confidence scoring:**
 - `high`: 2+ independent sources, no contradictions, fidelity verified
 - `medium`: single source, no contradictions, fidelity verified (default)
 - `low`: contradiction exists, fidelity concern, or single-source opinion
 
 See `references/validation-example.md` for a worked case (ENPIRE "99% success").
 
-### E  -  Indexing
+### E — Indexing
 
 1. Add new pages to `index.md` (alphabetical, by type).
 2. Append to `log.md`: action, subject, created/updated pages, validation flags.
@@ -115,6 +118,18 @@ low-confidence pages, orphans, stale content, oversized pages, source drift
 
 Report grouped by severity: broken links > contradictions > orphans > low confidence > stale > style.
 
+## Agent Navigation
+
+Every wiki includes `_navigate.md` at its root — a short file any agent can
+read to learn how to find and use information in the KB. No skill needed.
+
+```
+read_file $WIKI/_navigate.md
+```
+
+For ingestion with small context windows (<8K tokens), use the two-pass
+approach in `references/micro-skill.md`.
+
 ## Cross-Agent Design
 
 - Markdown-native: any agent with file read/search can query
@@ -135,12 +150,34 @@ Write SCHEMA.md (ask user for domain), index.md (empty sections), log.md (creati
 
 ## Pitfalls
 
-- Never modify raw/ files  -  sources are immutable
-- Never load entire KB into context  -  search, then read
-- Never auto-resolve contradictions  -  flag for human review
+- Never modify raw/ files — sources are immutable
+- Never load entire KB into context — search, then read
+- Never auto-resolve contradictions — flag for human review
 - Always orient first: read SCHEMA + index + recent log
-- Claims MUST have wikilinks  -  link to entity and concept pages
+- Claims MUST have wikilinks — link to entity and concept pages
 - Claims about metrics need qualification scrutiny (pass@8 vs pass@1)
+- Sha256 must be computed on `.strip()`'d body — file format inserts newline between `---` and body. Drift check must also strip before hashing, otherwise every file shows false-positive drift.
+- No em dashes in committed files. Use plain hyphens or commas. Check with `grep -r '—' *.md *.py` before committing.
+- Squash to single clean commit before first push. No history of fixes, README edits, or style corrections in the initial commit.
+- README tone: fact-based, humble, mention inspirations, invite PRs
+- GitHub push: prefer SSH (`git@github.com:user/repo.git`). Fine-grained tokens don't work for git HTTPS push. Classic tokens need `repo` + `workflow` scopes. If token auth fails with "Password authentication is not supported", use SSH or generate a new key with `ssh-keygen -t ed25519` and add to github.com/settings/keys.
+
+## Documentation Style
+
+When writing READMEs, project docs, or wiki pages for this user:
+
+- **Fact-based, no jargon.** State what the thing does, not how great it is.
+  No marketing words: \"powerful\", \"comprehensive\", \"seamless\", \"advanced\".
+- **Mention inspirations directly.** \"Built from X, Y, and Z\" with links.
+  The user wants the lineage visible.
+- **Simple and direct.** Short sentences. No \"heterogeneous document ingestion
+  pipeline\" when \"reads PDFs, code, CSVs, logs\" says the same thing.
+- **Show, don't sell.** Include example output, concrete what-it-catches lists,
+  real commands — not value propositions.
+
+The README rewrite in the initial autowiki session is the reference example:
+went from \"Self-validating knowledge compiler — ingest heterogeneous documents\"
+to \"Turn documents into a searchable, cross-referenced knowledge base.\"
 
 ## Obsidian Compatibility
 
@@ -159,9 +196,16 @@ npx skills add https://github.com/knefenk/autowiki
 # Python package
 pip install autowiki
 
-# Hermes-only (no pip  -  uses scripts/autowiki.py)
+# Hermes-only (no pip — uses scripts/autowiki.py)
 cp -r skills/autowiki ~/.hermes/skills/research/autowiki
 ```
 
-The skill calls `python3 scripts/autowiki.py <command>` for mechanical
-operations (chunking, sha256, lint, index). No pip needed for Hermes use.
+The Hermes-only path uses `scripts/autowiki.py` (self-contained, 280 lines)
+for mechanical operations (chunking, sha256, lint, index rebuild). The LLM
+handles semantic work. No pip, no external deps — just Python 3.10+.
+
+For mechanical ops, call: `python3 scripts/autowiki.py <command> --path ~/wiki`
+where commands are: init, save-raw, validate, chunk, lint, index, search, show, list.
+
+See `references/ecosystem-survey.md` for the Agent Skills landscape
+surveyed during development (kepano/obsidian-skills, ARIS, karpathy-llm-wiki).

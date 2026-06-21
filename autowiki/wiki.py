@@ -105,6 +105,10 @@ contradictions: []
 """
     (wiki / "log.md").write_text(log)
 
+    # _navigate.md — agent orientation (inspired by agent-kernel's AGENTS.md pattern)
+    from ._navigate import CONTENT as NAVIGATE_CONTENT
+    (wiki / "_navigate.md").write_text(NAVIGATE_CONTENT)
+
     return wiki
 
 

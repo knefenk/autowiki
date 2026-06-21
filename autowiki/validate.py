@@ -173,7 +173,7 @@ def _collect_pages(wiki_path: Path) -> list:
         if parts[0] in exclude:
             continue
         name = md_file.name
-        if name in ("SCHEMA.md", "index.md", "log.md"):
+        if name in ("SCHEMA.md", "index.md", "log.md", "_navigate.md"):
             continue
         pages.append(md_file)
     return pages
