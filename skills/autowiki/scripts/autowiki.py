@@ -256,7 +256,7 @@ def cmd_state(args):
     state_file = wiki / "state.json"
     if args.init:
         state = {"current_doc": args.init, "chunk": 0, "total_chunks": args.total or 1,
-                 "extracted": [], "pages_touched": []}
+                 "extracted": [], "pages_touched": [], "stale_count": 0, "last_seen": None}
         state_file.write_text(json.dumps(state, indent=2))
         print(f"State initialized: {args.init} (0/{state['total_chunks']})")
     elif state_file.exists():
@@ -272,6 +272,52 @@ def cmd_state(args):
         print(json.dumps(state))
     else:
         print(json.dumps({"error": "no state file. use --init to create"}))
+
+
+def cmd_watchdog(args):
+    """Check liveness of an ingestion run. Returns stuck status and suggestion."""
+    wiki = Path(args.path).expanduser().resolve()
+    state_file = wiki / "state.json"
+    if not state_file.exists():
+        print(json.dumps({"alive": False, "reason": "no state file"}))
+        return
+    state = json.loads(state_file.read_text())
+    last_seen = state.get("last_seen")
+    stale = state.get("stale_count", 0)
+    chunk = state.get("chunk", 0)
+    total = state.get("total_chunks", 0)
+
+    import time
+    now = time.time()
+    if last_seen and (now - last_seen) > 7200:
+        print(json.dumps({"alive": False, "reason": f"last seen {int((now-last_seen)/60)}m ago", "action": "restart from chunk " + str(chunk)}))
+    elif stale >= 2 and stale < 4:
+        print(json.dumps({"alive": True, "stuck": True, "stale_count": stale, "suggestion": "change chunking strategy or skip current document", "action": "nudge"}))
+    elif stale >= 4:
+        print(json.dumps({"alive": True, "stuck": True, "stale_count": stale, "suggestion": "flag for human review, try entirely different approach", "action": "flag"}))
+    else:
+        print(json.dumps({"alive": True, "stuck": False, "progress": f"{chunk}/{total}", "stale_count": stale}))
+
+
+def cmd_stale(args):
+    """Increment stale counter when a chunk yields nothing."""
+    wiki = Path(args.path).expanduser().resolve()
+    state_file = wiki / "state.json"
+    if not state_file.exists():
+        print(json.dumps({"error": "no state file"}))
+        return
+    state = json.loads(state_file.read_text())
+    state["stale_count"] = state.get("stale_count", 0) + 1
+    import time
+    state["last_seen"] = time.time()
+    state_file.write_text(json.dumps(state, indent=2))
+    c = state["stale_count"]
+    if c < 2:
+        print(json.dumps({"stale_count": c, "suggestion": "retry with same approach"}))
+    elif c < 4:
+        print(json.dumps({"stale_count": c, "suggestion": "change chunk size or skip ahead, don't dig deeper"}))
+    else:
+        print(json.dumps({"stale_count": c, "suggestion": "flag this document for human review"}))
 
 
 # ── lint ───────────────────────────────────────────────────
@@ -499,6 +545,12 @@ def main():
     s_state.add_argument("--add-extracted")
     s_state.add_argument("--add-touched")
 
+    s_watchdog = sub.add_parser("watchdog")
+    s_watchdog.add_argument("--path", default="~/wiki")
+
+    s_stale = sub.add_parser("stale")
+    s_stale.add_argument("--path", default="~/wiki")
+
     s_lint = sub.add_parser("lint")
     s_lint.add_argument("--path", default="~/wiki")
 
@@ -524,7 +576,8 @@ def main():
         p.print_help(); return
 
     {"init": cmd_init, "save-raw": cmd_save_raw, "validate": cmd_validate,
-     "chunk": cmd_chunk, "state": cmd_state, "lint": cmd_lint, "index": cmd_index,
+     "chunk": cmd_chunk, "state": cmd_state, "watchdog": cmd_watchdog,
+     "stale": cmd_stale, "lint": cmd_lint, "index": cmd_index,
      "search": cmd_search, "show": cmd_show, "list": cmd_list}[args.cmd](args)
 
 
