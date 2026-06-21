@@ -56,6 +56,23 @@ def main():
     p_val = sub.add_parser("validate", help="Validate raw source drift")
     p_val.add_argument("--path", default=None, help="Wiki path")
 
+    # state
+    p_state = sub.add_parser("state", help="Read/write ingestion progress state")
+    p_state.add_argument("--path", default=None, help="Wiki path")
+    p_state.add_argument("--init")
+    p_state.add_argument("--set-chunk", type=int)
+    p_state.add_argument("--total", type=int)
+    p_state.add_argument("--add-extracted")
+    p_state.add_argument("--add-touched")
+
+    # watchdog
+    p_wd = sub.add_parser("watchdog", help="Check liveness of an ingestion run")
+    p_wd.add_argument("--path", default=None, help="Wiki path")
+
+    # stale
+    p_stale = sub.add_parser("stale", help="Increment stale counter when chunk yields nothing")
+    p_stale.add_argument("--path", default=None, help="Wiki path")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -117,6 +134,77 @@ def main():
                 print(f"  {d}")
         else:
             print("All raw sources unchanged.")
+
+    elif args.command == "state":
+        print(_handle_state(args, wiki))
+
+    elif args.command == "watchdog":
+        print(_handle_watchdog(wiki))
+
+    elif args.command == "stale":
+        print(_handle_stale(wiki))
+
+
+def _handle_state(args, wiki):
+    import json
+    wiki.mkdir(parents=True, exist_ok=True)
+    state_file = wiki / "state.json"
+    if getattr(args, "init", None):
+        state = {"current_doc": args.init, "chunk": 0,
+                 "total_chunks": args.total or 1,
+                 "extracted": [], "pages_touched": [],
+                 "stale_count": 0, "last_seen": None}
+        state_file.write_text(json.dumps(state, indent=2))
+        return f"State initialized: {args.init} (0/{state['total_chunks']})"
+    elif state_file.exists():
+        state = json.loads(state_file.read_text())
+        if args.set_chunk is not None:
+            state["chunk"] = args.set_chunk
+        if args.add_extracted:
+            state["extracted"].append(args.add_extracted)
+        if args.add_touched:
+            if args.add_touched not in state["pages_touched"]:
+                state["pages_touched"].append(args.add_touched)
+        state_file.write_text(json.dumps(state, indent=2))
+        return json.dumps(state)
+    return json.dumps({"error": "no state file. use --init to create"})
+
+
+def _handle_watchdog(wiki):
+    import json, time
+    state_file = wiki / "state.json"
+    if not state_file.exists():
+        return json.dumps({"alive": False, "reason": "no state file"})
+    state = json.loads(state_file.read_text())
+    last_seen = state.get("last_seen")
+    stale = state.get("stale_count", 0)
+    chunk = state.get("chunk", 0)
+    total = state.get("total_chunks", 0)
+    now = time.time()
+    if last_seen and (now - last_seen) > 7200:
+        return json.dumps({"alive": False, "reason": f"last seen {int((now-last_seen)/60)}m ago", "action": "restart from chunk " + str(chunk)})
+    elif stale >= 2 and stale < 4:
+        return json.dumps({"alive": True, "stuck": True, "stale_count": stale, "suggestion": "change chunking strategy or skip current document", "action": "nudge"})
+    elif stale >= 4:
+        return json.dumps({"alive": True, "stuck": True, "stale_count": stale, "suggestion": "flag for human review", "action": "flag"})
+    return json.dumps({"alive": True, "stuck": False, "progress": f"{chunk}/{total}", "stale_count": stale})
+
+
+def _handle_stale(wiki):
+    import json, time
+    state_file = wiki / "state.json"
+    if not state_file.exists():
+        return json.dumps({"error": "no state file"})
+    state = json.loads(state_file.read_text())
+    state["stale_count"] = state.get("stale_count", 0) + 1
+    state["last_seen"] = time.time()
+    state_file.write_text(json.dumps(state, indent=2))
+    c = state["stale_count"]
+    if c < 2:
+        return json.dumps({"stale_count": c, "suggestion": "retry with same approach"})
+    elif c < 4:
+        return json.dumps({"stale_count": c, "suggestion": "change chunk size or skip ahead"})
+    return json.dumps({"stale_count": c, "suggestion": "flag this document for human review"})
 
 
 if __name__ == "__main__":

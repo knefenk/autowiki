@@ -1,14 +1,24 @@
 """Extended tests for stuck detection, watchdog, and performance patterns."""
 
-import json, time, tempfile
+import json, time, tempfile, sys
 from pathlib import Path
 from autowiki.wiki import init_wiki
 import subprocess, os
 
-SCRIPT = "/home/knef/.hermes/skills/research/autowiki/scripts/autowiki.py"
+# Find the script relative to the repo root
+_REPO = Path(__file__).resolve().parent.parent
+SCRIPT = str(_REPO / "skills" / "autowiki" / "scripts" / "autowiki.py")
+# Fallback: use the installed Hermes skill path
+if not os.path.exists(SCRIPT):
+    SCRIPT = os.path.expanduser("~/.hermes/skills/research/autowiki/scripts/autowiki.py")
+# Last resort: assume it's in PATH via pip install
+if not os.path.exists(SCRIPT):
+    SCRIPT = "autowiki"  # use CLI if available
 
 def run(*args):
-    return subprocess.run(["python3", SCRIPT] + list(args), capture_output=True, text=True)
+    if SCRIPT == "autowiki":
+        return subprocess.run([sys.executable, "-m", "autowiki.cli"] + list(args), capture_output=True, text=True)
+    return subprocess.run([sys.executable, SCRIPT] + list(args), capture_output=True, text=True)
 
 # ── Stuck detection ──────────────────────────────────────────
 
