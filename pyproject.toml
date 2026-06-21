@@ -1,0 +1,44 @@
+[project]
+name = "autowiki"
+version = "0.1.0"
+description = "Self-validating knowledge compiler  -  ingest documents, validate claims, build a reusable knowledge base"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "AutoWiki Contributors" },
+]
+keywords = ["wiki", "knowledge-base", "agent", "validation", "markdown", "rag-alternative"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Markup",
+]
+dependencies = [
+    "pymupdf>=1.24.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/knefenk/autowiki"
+Documentation = "https://github.com/knefenk/autowiki#readme"
+Repository = "https://github.com/knefenk/autowiki"
+Issues = "https://github.com/knefenk/autowiki/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[project.scripts]
+autowiki = "autowiki.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
