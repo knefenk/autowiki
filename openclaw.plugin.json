@@ -1,0 +1,9 @@
+{
+  "id": "autowiki",
+  "name": "AutoWiki",
+  "description": "Turn documents into a validated, cross-referenced knowledge base. Ingests markdown, PDFs, code, CSVs, logs. Checks claims against sources.",
+  "version": "0.1.0",
+  "activation": {
+    "onStartup": false
+  }
+}

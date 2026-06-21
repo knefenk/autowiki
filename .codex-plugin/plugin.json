@@ -1,0 +1,36 @@
+{
+  "name": "autowiki",
+  "version": "0.1.0",
+  "description": "Turn documents into a validated, cross-referenced knowledge base. Ingests markdown, PDFs, code, CSVs, logs. Checks claims against sources.",
+  "author": {
+    "name": "knefenk",
+    "url": "https://github.com/knefenk"
+  },
+  "homepage": "https://github.com/knefenk/autowiki",
+  "repository": "https://github.com/knefenk/autowiki",
+  "license": "MIT",
+  "keywords": [
+    "knowledge-base",
+    "wiki",
+    "validation",
+    "documents",
+    "markdown",
+    "claims"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AutoWiki",
+    "shortDescription": "Build validated knowledge bases from any document",
+    "longDescription": "AutoWiki ingests documents (PDFs, code, CSVs, logs, markdown), extracts claims, validates them against their sources, and builds a searchable, cross-referenced knowledge base. Claims get confidence scores. Contradictions get flagged instead of buried.",
+    "developerName": "knefenk",
+    "category": "Knowledge",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "ingest this PDF into my wiki",
+      "what does my knowledge base know about semiconductor revenue",
+      "validate the claims in my wiki"
+    ],
+    "websiteURL": "https://github.com/knefenk/autowiki",
+    "brandColor": "#10B981"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "autowiki",
+  "description": "Turn documents into a validated, cross-referenced knowledge base",
+  "version": "0.1.0",
+  "author": {
+    "name": "knefenk"
+  },
+  "homepage": "https://github.com/knefenk/autowiki",
+  "repository": "https://github.com/knefenk/autowiki",
+  "license": "MIT",
+  "keywords": [
+    "knowledge-base",
+    "wiki",
+    "validation",
+    "documents",
+    "markdown"
+  ]
+}
